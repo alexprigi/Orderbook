@@ -17,7 +17,7 @@ import { OrientationType, RenderItem, RenderableOrderItem, Order, Crypto } from 
 import { sortAscending, sortDescending } from "@orderbook/utils";
 
 // Height of each single order line
-const ITEM_HEIGHT = Variables.basicUnit * 2.5;
+const ITEM_HEIGHT = Variables.lineItemHeight;
 
 // Default order state
 const INITIAL_STATE = {
@@ -143,9 +143,9 @@ const Orderbook = () => {
     // Calculate the available height of the container view as the height of the container
     // minus the height of the "Price, Size, Total" headerbar
     // minus the height of the Spread headerbar if is not in landscape mode
-    let newAvailableHeight = availableHeight - Variables.basicUnit * 2;
+    let newAvailableHeight = availableHeight - Variables.lineItemHeight;
     if (!isLandscape()) {
-      newAvailableHeight -= Variables.basicUnit * 2;
+      newAvailableHeight -= Variables.lineItemHeight;
     }
     // Calculate the number of renderable items
     const renderableItems = Math.trunc((newAvailableHeight / ITEM_HEIGHT) / (isLandscape() ? 1 : 2));
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
     flex: 1
   },
   header: {    
-    height: Variables.basicUnit * 2.5,
+    height: Variables.lineItemHeight,
     borderColor: Colors.divider,
     borderBottomWidth: 1,
     borderTopWidth: 1,
@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
     textAlign: "right"
   },
   spread: {
-    height: Variables.basicUnit * 2.5,
+    height: Variables.lineItemHeight,
     alignItems: "center",
   },
   centerView: {

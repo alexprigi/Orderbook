@@ -34,12 +34,15 @@ const OrderListItem: React.FC<Props> = ({order, barWidth, isBid, isReversedAlign
                 backgroundColor: isBid ? Colors.bidBarBackgroundColor : Colors.askBarBackgroundColor
             }} />
             <Label 
-                text={order.price.toFixed(2)}
+                text={order.price.toLocaleString(undefined,{
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}
                 textColor={isBid ? Colors.priceBidTextColor : Colors.priceAskTextColor}
                 additionalStyle={styles.label} />
-            <Label text={order.size}
+            <Label text={order.size.toLocaleString()}
                 additionalStyle={styles.label} />
-            <Label text={order.total}
+            <Label text={order.total.toLocaleString()}
                 additionalStyle={styles.label} />
         </View>
     );
@@ -50,13 +53,13 @@ export default OrderListItem;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        height: Variables.basicUnit * 2.5
+        height: Variables.lineItemHeight
     },
     bar: {
         position: "absolute",
         top: 0,
         left: 0,
-        height: Variables.basicUnit * 2.5,
+        height: Variables.lineItemHeight,
     },
     label: {
         flex: 0.3,

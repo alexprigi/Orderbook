@@ -1,4 +1,7 @@
 
+
+const basicUnit = 8;
 export default {
-    basicUnit: 8
+    basicUnit,
+    lineItemHeight: basicUnit * 2.5
 }
