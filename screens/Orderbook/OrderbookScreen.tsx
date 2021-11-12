@@ -161,7 +161,7 @@ const Orderbook = () => {
         // Filter bids rendering from the hightest value
         bidsToRender = Array.from(ordersState.bids.values()) as Order[];
         bidsToRender.sort((item1, item2) => sortDescending(item1.price, item2.price))
-        // bidsToRender = bidsToRender.slice(0, renderableItems);
+        bidsToRender = bidsToRender.slice(0, renderableItems);
       }
       let asksToRender: Order[] = [];
       if (ordersState.asks.size > 0) {
@@ -170,7 +170,7 @@ const Orderbook = () => {
         asksToRender = Array.from(ordersState.asks.values()) as Order[];
         if(!isLandscape()) {
           asksToRender.sort((item1, item2) => sortDescending(item1.price, item2.price))
-          // asksToRender = asksToRender.slice(-renderableItems);
+          asksToRender = asksToRender.slice(-renderableItems);
         } else {
           asksToRender.sort((item1, item2) => sortAscending(item1.price, item2.price))
           asksToRender = asksToRender.slice(0, renderableItems);
@@ -323,7 +323,7 @@ const Orderbook = () => {
             ListHeaderComponent={() => renderHeader(false)}
             data={renderableOrders[1]?.data}
             renderItem={renderAskItem}
-            scrollEnabled={true}
+            scrollEnabled={false}
           />
           {!isLandscape() && renderSpread()}
           <FlatList
@@ -331,7 +331,7 @@ const Orderbook = () => {
             ListHeaderComponent={isLandscape() && renderHeader(true)}
             data={renderableOrders[0]?.data}
             renderItem={renderBidItem}
-            scrollEnabled={true}
+            scrollEnabled={false}
           />
         </View>
 
