@@ -3,14 +3,16 @@ import {
   StyleSheet,
   View,
   ActivityIndicator,
-  FlatList
+  FlatList,
+  AppState,
+  AppStateStatus
 } from 'react-native';
 import Label from "@orderbook/label";
 import Button from "@orderbook/button";
 import OrderListItem from "@orderbook/order-list-item";
 import { Colors, Variables } from "@orderbook/theme";
-import { OrderbookService, IOrderbookService } from "@orderbook/services";
-import Orientation, { useOrientationChange, PORTRAIT, LANDSCAPE, OrientationType  as RNOrientationType} from 'react-native-orientation-locker';
+import { OrderbookService } from "@orderbook/services";
+import Orientation, { useOrientationChange, OrientationType  as RNOrientationType} from 'react-native-orientation-locker';
 import { OrientationType, RenderItem, RenderableOrderItem, Order, Crypto } from "./models";
 import { sortAscending, sortDescending } from "@orderbook/utils";
 
@@ -27,6 +29,69 @@ const INITIAL_STATE = {
   percentage: 0
 };
 
+// Function to handle bids and asks orders when a delta message is received
+const ordersHandler = (orders: any[], order: any[]) => {
+  const orderIndex = orders.findIndex(o => o[0] === order[0]);
+  if (orderIndex < 0) {
+    if (order[1] > 0) {
+      // Add a new order if it's a new order and the size is greater then 0
+      orders.push(order);
+    }
+  } else {
+    if (order[1] === 0) {
+      // Remove the order if size is 0
+      orders.splice(orderIndex, 1);
+    } else {
+      // Overwrite the previous size of the order if its size is not null and was already in the list 
+      orders[orderIndex][1] = order[1];
+    }
+  }
+};
+
+// Function to populate bids and asks into a map with the price as key.
+// Furthermore the total of orders is calculated
+const populateMap = (orders: any[]) => {
+  const ordersMap = new Map<String, Order>();
+  let total = 0;
+  orders.forEach((order: any[]) => {
+    const key = order[0].toString();
+    total += order[1];
+    ordersMap.set(key, { price: order[0], size: order[1], total });
+  });
+  return { ordersMap, total };
+};
+
+// Function to be called whever a render trigger is desired
+const prepareDataToBeRendered = (bids: any[] = [], asks: any[] = []) => {
+  let spread = 0, percentage = 0;
+  // Sort bids by descending price to calculate the total of bids orders
+  bids.sort((item1, item2) => sortDescending(item1[0], item2[0]));
+  // Sort asks by ascending price to calculate the total of asks orders
+  asks.sort((item1, item2) => sortAscending(item1[0], item2[0]));
+
+  if (bids.length > 0 && asks.length > 0) {
+    // Calculate the spread as difference between the lowest ask price and the highest bid price 
+    spread = asks[0][0] - bids[0][0];
+    // Calculate the spread percentage as spread divided by the highest bid price in percentage
+    percentage = (spread / bids[0][0]) * 100;
+    percentage = Math.round(percentage * 100) / 100;
+  }
+  // Populate the ordersMaps and the totals
+  const { ordersMap: bidsMap, total: totalBids } = populateMap(bids);
+  const { ordersMap: asksMap, total: totalAsks } = populateMap(asks);
+
+  // Dispatch a new order state with which the view can be updated
+  return {
+    bids: bidsMap,
+    asks: asksMap,
+    totalBids,
+    totalAsks,
+    spread,
+    percentage
+  }
+};
+
+
 function reducer(state: any, values: any) {
   if (values) {
     return { ...state, ...values };
@@ -34,124 +99,103 @@ function reducer(state: any, values: any) {
   return state;
 }
 
+let orderbookService: OrderbookService = null;
+
 const Orderbook = () => {
   const containerRef = useRef(null);
   const [ordersState, ordersDispatch] = useReducer(reducer, INITIAL_STATE);
   const [isConnected, setIsConnected] = useState<Boolean>(false);
+  const [isWaitingForReconnection, setIsWaitingForReconnection] = useState<Boolean>(false);
   const [crypto, setCrypto] = useState<Crypto>(Crypto.BTC);
   const [orientation, setOrientation] = useState<OrientationType>(Orientation.getInitialOrientation());
-  // const [serverState, setServerState] = useState('Loading...');
-  // const [messageText, setMessageText] = useState('');
-  // const [serverMessages, setServerMessages] = useState([]);
+  const [errorMessage, setErrorMessage] = useState<String>("");
   const [renderableOrders, setRenderableOrders] = useState<RenderableOrderItem[]>([]);
   const [availableHeight, setAvailableHeight] = useState<number>(0);
-  const [orderbookService, setOrderbookService] = useState<OrderbookService>();
+  const [timer, setTimer] = useState<NodeJS.Timer>();
+
+  // List of bids and asks that are going to be updated whenever the app receives a new message 
+  let bids: any[] = [];
+  let asks: any[] = [];
+
+  const onOpen = () => {
+    setIsConnected(true);
+    setIsWaitingForReconnection(false);
+  };
+
+  const onClose = () => {
+    setIsConnected(false);
+    setIsWaitingForReconnection(true);
+    if (timer) {
+      clearInterval(timer);
+    }
+  };
+
+  const onError = () => {
+    setErrorMessage("Something went wrong");
+    setIsWaitingForReconnection(true);
+    if (timer) {
+      clearInterval(timer);
+    }
+  }
+
+  // Callback to be called when a new message is received
+  const onMessage = (response: any) => {
+    // console.log(response)
+    // Populate orders with first snapshot if feed and numLevels are defined
+    // Otherwise update the orders from the delta message
+    if (response.feed && response.numLevels) {
+      bids = response.bids.slice();
+      asks = response.asks.slice();
+      ordersDispatch(prepareDataToBeRendered(bids, asks));
+    } else {
+      if (response.bids) {
+        response.bids.forEach((bid: any[]) => {
+          ordersHandler(bids, bid);
+        });
+      }
+      if (response.asks) {
+        response.asks.forEach((ask: any[]) => {
+          ordersHandler(asks, ask);
+        });
+      }
+    }
+  };
 
   const isLandscape = useCallback((): Boolean => {
     return orientation.startsWith("LANDSCAPE");
   }, [orientation]);
 
-  useEffect(() => {
-    // List of bids and asks that are going to be updated whenever the app receives a new message 
-    let bids: any[] = [];
-    let asks: any[] = [];
-    
-    // Function to handle bids and asks orders when a delta message is received
-    const ordersHandler = (orders: any[], order: any[]) => {
-      const orderIndex = orders.findIndex(o => o[0] === order[0]);
-      if (orderIndex < 0) {
-        if (order[1] > 0) {
-          // Add a new order if it's a new order and the size is greater then 0
-          orders.push(order);
-        }
-      } else {
-        if (order[1] === 0) {
-          // Remove the order if size is 0
-          orders.splice(orderIndex, 1);
-        } else {
-          // Overwrite the previous size of the order if its size is not null and was already in the list 
-          orders[orderIndex][1] = order[1];
-        }
-      }
-    };
-
-    // Function to populate bids and asks into a map with the price as key.
-    // Furthermore the total of orders is calculated
-    const populateMap = (orders: any[]) => {
-      const ordersMap = new Map<String, Order>();
-      let total = 0;
-      orders.forEach((order: any[]) => {
-        const key = order[0].toString();
-        total += order[1];
-        ordersMap.set(key, { price: order[0], size: order[1], total });
-      });
-      return { ordersMap, total };
-    };
-
-    const prepareDataToBeRendered = () => {
-      // Sort bids by descending price to calculate the total of bids orders
-      bids.sort((item1, item2) => sortDescending(item1[0], item2[0]));
-      // Sort asks by ascending price to calculate the total of asks orders
-      asks.sort((item1, item2) => sortAscending(item1[0], item2[0]));
-      
-      // Calculate the spread as difference between the lowest ask price and the highest bid price 
-      const spread = asks[0][0] - bids[0][0];
-      // Calculate the spread percentage as spread divided by the highest bid price in percentage
-      let percentage = (spread / bids[0][0]) * 100;
-      percentage = Math.round(percentage * 100) / 100;
-
-      // Populate the ordersMaps and the totals
-      const { ordersMap: bidsMap, total: totalBids } = populateMap(bids);
-      const { ordersMap: asksMap, total: totalAsks } = populateMap(asks);
-
-      // Dispatch a new order state with which the view can be updated
-      ordersDispatch({
-        bids: bidsMap,
-        asks: asksMap,
-        totalBids,
-        totalAsks,
-        spread,
-        percentage
-      })
-    };
-
-    // Callback to be called when a new message is received
-    const onMessage = (response: any) => {
-      // console.log(response)
-      if (response.feed && response.numLevels) {
-        console.log(response)
-
-        bids = response.bids.slice();
-        asks = response.asks.slice();
-        prepareDataToBeRendered();
-      } else {
-        if(response.bids) {          
-          response.bids.forEach((bid: any[]) => {
-            ordersHandler(bids, bid);
-          });
-        }
-        if(response.asks) {
-          response.asks.forEach((ask: any[]) => {
-            ordersHandler(asks, ask);
-          });
-        }
-      }
+  const onAppStateChange = (nextAppState: AppStateStatus) => {
+    if (nextAppState.match(/inactive|background/)) {
+      orderbookService?.close();
     }
+  };
 
-    const os = new OrderbookService(null, null, null, onMessage);
-    setOrderbookService(os);
-    let timer = setInterval(prepareDataToBeRendered, 2 * 1000);
-    os.connect(crypto);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", onAppStateChange);
 
     return () => {
-      clearInterval(timer);
-      os.close();
+      subscription.remove();
     }
   }, []);
 
+  const startConnection = () => {
+    orderbookService = new OrderbookService(onOpen, onClose, onError, onMessage);
+
+    if (timer) {
+      clearInterval(timer);
+    }
+    setTimer(
+      setInterval(() => ordersDispatch(prepareDataToBeRendered(bids, asks)), 2 * 1000)
+    );
+    orderbookService.connect(crypto);
+  }
+
   useEffect(() => {
-    orderbookService?.subscribe(crypto);
-  }, [crypto]);
+    if (!isWaitingForReconnection) {
+      startConnection();
+    }
+  }, [isWaitingForReconnection]);
 
   useEffect(() => {
     // Calculate the available height of the container view as the height of the container
@@ -278,11 +322,15 @@ const Orderbook = () => {
 
         <Button
           text="Toogle Feed"
+          // onPress={() => orderbookService?.close()}
           onPress={() => {
             orderbookService?.unsubscribe(crypto);
             ordersDispatch(INITIAL_STATE);
-            setCrypto(crypto === Crypto.BTC ? Crypto.ETH : Crypto.BTC);
-          }} />
+            const newCrypto = crypto === Crypto.BTC ? Crypto.ETH : Crypto.BTC
+            setCrypto(newCrypto);
+            orderbookService?.subscribe(newCrypto);
+          }}
+        />
       </>);
   };
 
@@ -290,18 +338,22 @@ const Orderbook = () => {
     return (
       <View style={styles.centerView}>
         <Label text="Connection Lost" />
+        {!!errorMessage && <Label text={errorMessage} textColor={Colors.error} />}
         <Button
           text="Reconnect"
-          onPress={() => {
-
-          }} />
+          onPress={() => startConnection()}
+          />
       </View>);
   };
 
   return (
     <View style={styles.container}>
-      {!isConnected && renderOrderBook()}
-      {/* {!isConnected && <View style={styles.centerView}><ActivityIndicator size="large" color={Colors.primaryAccented} /></View>} */}
+      {isWaitingForReconnection
+        ? renderReconnection()
+        : (isConnected ? renderOrderBook() : <View style={styles.centerView}>
+          <ActivityIndicator size="large" color={Colors.primaryAccented} />
+        </View>)
+      }
     </View>
   );
 };

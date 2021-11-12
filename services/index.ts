@@ -1,4 +1,2 @@
-/// <reference path="index.d.ts" />
-import OrderbookService, { IOrderbookService } from './orderbook';
+import OrderbookService from './orderbook';
 export { OrderbookService };
-export type { IOrderbookService };

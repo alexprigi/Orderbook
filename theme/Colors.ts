@@ -7,4 +7,5 @@ export default {
     priceBidTextColor: "#13865E",
     askBarBackgroundColor: "#3D1E28",
     priceAskTextColor: "#B73236",
+    error: "red",
 }

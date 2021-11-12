@@ -1,8 +1,4 @@
-export interface IOrderbookService {
-
-}
-
-export default class OrderbookService implements IOrderbookService{
+export default class OrderbookService {
   URL: string = "wss://www.cryptofacilities.com/ws/v1";
   ws?: WebSocket;
   onOpen: (() => void) | null;
@@ -27,8 +23,8 @@ export default class OrderbookService implements IOrderbookService{
       const response = e.data && JSON.parse(e.data);
       this.onMessage && this.onMessage(response);
     }
-    // this.ws.onerror = this.onError || null;
-    // this.ws.onclose = this.onClose || null;
+    this.ws.onerror = this.onError || null;
+    this.ws.onclose = this.onClose || null;
   }
 
   subscribe(crypto: String) {
@@ -45,7 +41,11 @@ export default class OrderbookService implements IOrderbookService{
     this.ws?.send(JSON.stringify(msg));
   }
 
-  close(){
+  close() {
     this.ws?.close();
+  }
+
+  isConnectionOpen() {
+    this.ws?.readyState === WebSocket.OPEN;
   }
 };
