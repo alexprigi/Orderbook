@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// IMPORTS
+// -----------------------------------------------------------------------------
+
+// External/Third party dependencies
 import React, { useState, useEffect, useRef, useReducer, useCallback } from 'react';
 import {
   StyleSheet,
@@ -7,6 +12,7 @@ import {
   AppState,
   AppStateStatus
 } from 'react-native';
+// Internal dependencies
 import Label from "@orderbook/label";
 import Button from "@orderbook/button";
 import OrderListItem from "@orderbook/order-list-item";
@@ -91,7 +97,6 @@ const prepareDataToBeRendered = (bids: any[] = [], asks: any[] = []) => {
   }
 };
 
-
 function reducer(state: any, values: any) {
   if (values) {
     return { ...state, ...values };
@@ -156,7 +161,7 @@ const Orderbook = () => {
         // Filter bids rendering from the hightest value
         bidsToRender = Array.from(ordersState.bids.values()) as Order[];
         bidsToRender.sort((item1, item2) => sortDescending(item1.price, item2.price))
-        bidsToRender = bidsToRender.slice(0, renderableItems);
+        // bidsToRender = bidsToRender.slice(0, renderableItems);
       }
       let asksToRender: Order[] = [];
       if (ordersState.asks.size > 0) {
@@ -165,7 +170,7 @@ const Orderbook = () => {
         asksToRender = Array.from(ordersState.asks.values()) as Order[];
         if(!isLandscape()) {
           asksToRender.sort((item1, item2) => sortDescending(item1.price, item2.price))
-          asksToRender = asksToRender.slice(-renderableItems);
+          // asksToRender = asksToRender.slice(-renderableItems);
         } else {
           asksToRender.sort((item1, item2) => sortAscending(item1.price, item2.price))
           asksToRender = asksToRender.slice(0, renderableItems);
@@ -318,7 +323,7 @@ const Orderbook = () => {
             ListHeaderComponent={() => renderHeader(false)}
             data={renderableOrders[1]?.data}
             renderItem={renderAskItem}
-            scrollEnabled={false}
+            scrollEnabled={true}
           />
           {!isLandscape() && renderSpread()}
           <FlatList
@@ -326,7 +331,7 @@ const Orderbook = () => {
             ListHeaderComponent={isLandscape() && renderHeader(true)}
             data={renderableOrders[0]?.data}
             renderItem={renderBidItem}
-            scrollEnabled={false}
+            scrollEnabled={true}
           />
         </View>
 
