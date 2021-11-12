@@ -117,86 +117,28 @@ const Orderbook = () => {
   let bids: any[] = [];
   let asks: any[] = [];
 
-  const onOpen = () => {
-    setIsConnected(true);
-    setIsWaitingForReconnection(false);
-  };
-
-  const onClose = () => {
-    setIsConnected(false);
-    setIsWaitingForReconnection(true);
-    if (timer) {
-      clearInterval(timer);
-    }
-  };
-
-  const onError = () => {
-    setErrorMessage("Something went wrong");
-    setIsWaitingForReconnection(true);
-    if (timer) {
-      clearInterval(timer);
-    }
-  }
-
-  // Callback to be called when a new message is received
-  const onMessage = (response: any) => {
-    // console.log(response)
-    // Populate orders with first snapshot if feed and numLevels are defined
-    // Otherwise update the orders from the delta message
-    if (response.feed && response.numLevels) {
-      bids = response.bids.slice();
-      asks = response.asks.slice();
-      ordersDispatch(prepareDataToBeRendered(bids, asks));
-    } else {
-      if (response.bids) {
-        response.bids.forEach((bid: any[]) => {
-          ordersHandler(bids, bid);
-        });
-      }
-      if (response.asks) {
-        response.asks.forEach((ask: any[]) => {
-          ordersHandler(asks, ask);
-        });
-      }
-    }
-  };
-
-  const isLandscape = useCallback((): Boolean => {
-    return orientation.startsWith("LANDSCAPE");
-  }, [orientation]);
-
   const onAppStateChange = (nextAppState: AppStateStatus) => {
     if (nextAppState.match(/inactive|background/)) {
       orderbookService?.close();
     }
   };
 
+  // Add and remove app state change listener when the component is mounted/unmounted
   useEffect(() => {
     const subscription = AppState.addEventListener("change", onAppStateChange);
-
     return () => {
       subscription.remove();
     }
   }, []);
 
-  const startConnection = () => {
-    orderbookService = new OrderbookService(onOpen, onClose, onError, onMessage);
+  const isLandscape = useCallback((): Boolean => {
+    return orientation.startsWith("LANDSCAPE");
+  }, [orientation]);
 
-    if (timer) {
-      clearInterval(timer);
-    }
-    setTimer(
-      setInterval(() => ordersDispatch(prepareDataToBeRendered(bids, asks)), 2 * 1000)
-    );
-    orderbookService.connect(crypto);
-  }
-
-  useEffect(() => {
-    if (!isWaitingForReconnection) {
-      startConnection();
-    }
-  }, [isWaitingForReconnection]);
-
+  useOrientationChange((orientation) => {
+    setOrientation(orientation);
+  });
+  
   useEffect(() => {
     // Calculate the available height of the container view as the height of the container
     // minus the height of the "Price, Size, Total" headerbar
@@ -239,10 +181,78 @@ const Orderbook = () => {
     }
   }, [availableHeight, ordersState, setRenderableOrders, isLandscape]);
 
-  useOrientationChange((orientation) => {
-    setOrientation(orientation);
-  });
-  
+  // -----------------------------------------------------------------------------
+  // ORDERBOOK SERVICE CALLBACKS
+  // -----------------------------------------------------------------------------
+  const onOpen = useCallback(() => {
+    setIsConnected(true);
+    setIsWaitingForReconnection(false);
+  }, [setIsConnected, setIsWaitingForReconnection]);
+
+  const onClose = useCallback(() => {
+    setIsConnected(false);
+    setIsWaitingForReconnection(true);
+    if (timer) {
+      clearInterval(timer);
+    }
+  }, [setIsConnected, setIsWaitingForReconnection, timer]);
+
+  const onError = useCallback(() => {
+    setErrorMessage("Something went wrong");
+    setIsWaitingForReconnection(true);
+    if (timer) {
+      clearInterval(timer);
+    }
+  }, [setErrorMessage, setIsWaitingForReconnection, timer]);
+
+  // Callback to be called when a new message is received
+  const onMessage = useCallback((response: any) => {
+    // console.log(response)
+    // Populate orders with first snapshot if feed and numLevels are defined
+    // Otherwise update the orders from the delta message
+    if (response.feed && response.numLevels) {
+      bids = response.bids.slice();
+      asks = response.asks.slice();
+      ordersDispatch(prepareDataToBeRendered(bids, asks));
+    } else {
+      if (response.bids) {
+        response.bids.forEach((bid: any[]) => {
+          ordersHandler(bids, bid);
+        });
+      }
+      if (response.asks) {
+        response.asks.forEach((ask: any[]) => {
+          ordersHandler(asks, ask);
+        });
+      }
+    }
+  }, [ordersDispatch]);
+
+  // -----------------------------------------------------------------------------
+  // CONNECTIONS HANDLERS
+  // -----------------------------------------------------------------------------
+  const startConnection = useCallback(() => {
+    orderbookService = new OrderbookService(onOpen, onClose, onError, onMessage);
+
+    if (timer) {
+      clearInterval(timer);
+    }
+    setTimer(
+      setInterval(() => ordersDispatch(prepareDataToBeRendered(bids, asks)), 2 * 1000)
+    );
+    orderbookService.connect(crypto);
+  }, [timer, setTimer]);
+
+  useEffect(() => {
+    if (!isWaitingForReconnection) {
+      startConnection();
+    }
+  }, [isWaitingForReconnection]);
+
+  // -----------------------------------------------------------------------------
+  // RENDER METHOS
+  // -----------------------------------------------------------------------------
+
   const renderBidItem = ({ item, index }: RenderItem) => {
     const backgroundWidth = (item.total / ordersState.totalBids) * 100;
     const isLandscapeMode = isLandscape();
@@ -322,7 +332,6 @@ const Orderbook = () => {
 
         <Button
           text="Toogle Feed"
-          // onPress={() => orderbookService?.close()}
           onPress={() => {
             orderbookService?.unsubscribe(crypto);
             ordersDispatch(INITIAL_STATE);
@@ -334,7 +343,7 @@ const Orderbook = () => {
       </>);
   };
 
-  const renderReconnection = () => {
+  const renderReconnectionView = () => {
     return (
       <View style={styles.centerView}>
         <Label text="Connection Lost" />
@@ -346,13 +355,18 @@ const Orderbook = () => {
       </View>);
   };
 
+  const renderProgressView = () => {
+    return (
+      <View style={styles.centerView}>
+      <ActivityIndicator size="large" color={Colors.primaryAccented} />
+    </View>);
+  };
+
   return (
     <View style={styles.container}>
       {isWaitingForReconnection
-        ? renderReconnection()
-        : (isConnected ? renderOrderBook() : <View style={styles.centerView}>
-          <ActivityIndicator size="large" color={Colors.primaryAccented} />
-        </View>)
+        ? renderReconnectionView()
+        : (isConnected ? renderOrderBook() : renderProgressView())
       }
     </View>
   );
