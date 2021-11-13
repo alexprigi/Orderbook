@@ -243,7 +243,7 @@ const Orderbook = () => {
       clearInterval(timer);
     }
     setTimer(
-      setInterval(() => ordersDispatch(prepareDataToBeRendered(bids, asks)), 2 * 1000)
+      setInterval(() => ordersDispatch(prepareDataToBeRendered(bids, asks)), 1000)
     );
     orderbookService.connect(crypto);
   }, [timer, setTimer]);
